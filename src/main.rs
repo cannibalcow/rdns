@@ -1,46 +1,45 @@
 use std::net::UdpSocket;
 
-use rdns::DNSHeader;
+use rdns::{DNSHeader, DNSQuestion};
 mod rdns;
 
 // https://mislove.org/teaching/cs4700/spring11/handouts/project1-primer.pdf
 
 fn main() -> std::io::Result<()> {
     {
-        let socket = UdpSocket::bind("127.0.0.1:5555")?;
+        let socket = UdpSocket::bind("127.0.0.1:53")?;
 
-        loop {
+        let running = true;
+
+        while running {
             let mut buf: [u8; 512] = [0; 512];
 
             let (amt, _) = socket.recv_from(&mut buf)?;
 
             let resp = &mut buf[..amt];
 
+            let header_result = DNSHeader::decode(resp);
+            let question_result = DNSQuestion::decode(resp);
 
-            let headerResult = DNSHeader::decode(resp);
-
-            if headerResult.is_err() {
-                println!("Error parsing :(");
+            if header_result.is_err() {
+                println!("Error parsing header :(");
                 continue;
             }
 
-            let header = headerResult.unwrap();
+            if question_result.is_err() {
+                println!("Error parsing message :(");
+                continue;
+            }
 
-            header.print()
+            let header = header_result.unwrap();
+            let question = question_result.unwrap();
 
+            header.print();
+            question.print();
         }
         // println!("Str: {:?}", String::from_utf8_lossy(resp))
         // buf.reverse();
         // socket.send_to(buf, &src)?;
-    }
-
-    Ok(())
-}
-
-fn get_bit_at(input: u8, n: u8) -> Result<bool, ()> {
-    if n < 8 {
-        Ok(input & (1 << n) != 0)
-    } else {
-        Err(())
+        Ok(())
     }
 }

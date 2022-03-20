@@ -1,5 +1,3 @@
-use std::io::{Error, ErrorKind};
-
 // https://mislove.org/teaching/cs4700/spring11/handouts/project1-primer.pdf
 // https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-5
 #[derive(PartialEq, Debug)]
@@ -10,20 +8,56 @@ enum QR {
 
 #[derive(PartialEq, Debug)]
 enum OPCode {
-    QUERY,
-    IQUERY,
-    STATUS,
-    NOTIFY,
-    UPDATE,
-    DSO,
+    QUERY = 0,
+    IQUERY = 1,
+    STATUS = 2,
+    NOTIFY = 4,
+    UPDATE = 5,
+}
+
+impl OPCode {
+    fn from_u32(value: u32) -> OPCode {
+        match value {
+            0 => OPCode::QUERY,
+            1 => OPCode::IQUERY,
+            2 => OPCode::STATUS,
+            4 => OPCode::NOTIFY,
+            5 => OPCode::UPDATE,
+            _ => panic!("Ivalid opcode value"),
+        }
+    }
 }
 
 #[derive(Debug)]
 enum ReturnCode {
-    NoError,
-    FormatError,
-    ServFail,
-    NxDomain,
+    NoError = 0,
+    FormatError = 1,
+    ServFail = 2,
+    NameError = 3,
+    Refused = 5,
+    YXDomain = 6,
+    YXRRSet = 7,
+    NXRRSet = 8,
+    NotAuth = 9,
+    NotZone = 10,
+}
+
+impl ReturnCode {
+    fn from_u8(value: u8) -> ReturnCode {
+        match value {
+            0 => ReturnCode::NoError,
+            1 => ReturnCode::FormatError,
+            2 => ReturnCode::ServFail,
+            3 => ReturnCode::NameError,
+            5 => ReturnCode::Refused,
+            6 => ReturnCode::YXDomain,
+            7 => ReturnCode::YXRRSet,
+            8 => ReturnCode::NXRRSet,
+            9 => ReturnCode::NotAuth,
+            10 => ReturnCode::NotZone,
+            _ => panic!("Inalid opcode: {:?}", value),
+        }
+    }
 }
 
 pub struct DNSHeader {
@@ -77,8 +111,43 @@ impl DNSHeader {
     }
 }
 
-struct DNSQuestion {
-    name: String,
+#[allow(dead_code)]
+pub struct DNSQuestion {
+    qname: Vec<String>,
+}
+
+impl DNSQuestion {
+    pub fn decode(dns_request: &[u8]) -> Result<DNSQuestion, ()> {
+        return Ok(DNSQuestion {
+            qname: parse_qname(dns_request).unwrap(),
+        });
+    }
+
+    pub fn print(&self) {
+        println!("DNS QUESTION");
+        println!("QNAME: {:?}", self.qname)
+    }
+}
+
+fn parse_qname(dns_request: &[u8]) -> Result<Vec<String>, ()> {
+    let result = parse_qname_parts(12, dns_request, &mut vec![]);
+    return Ok(result);
+}
+
+fn parse_qname_parts(pos: usize, dns_request: &[u8], parts: &mut Vec<String>) -> Vec<String> {
+    let read_forward: usize = dns_request[pos] as usize;
+
+    if read_forward == 0 {
+        return parts.to_vec();
+    }
+
+    let part = &dns_request[pos + 1..=pos + read_forward];
+    // println!("Part: {:?}", result_spart.unwrap());
+    parts.push(String::from_utf8(part.to_vec()).unwrap());
+
+    let next_pos = pos + read_forward + 1;
+
+    return parse_qname_parts(next_pos, dns_request, parts);
 }
 
 fn parse_header_arcount(dns_request: &[u8]) -> u16 {
@@ -122,17 +191,11 @@ fn parse_header_qr(dns_request: &[u8]) -> Result<QR, ()> {
 }
 
 fn parse_header_opcode(dns_request: &[u8]) -> Result<OPCode, ()> {
-    // Wtf
-    let opcode = (dns_request[3] & (0b1111 << 4) >> 4) as u8;
-    match opcode {
-        0 => Ok(OPCode::QUERY),
-        1 => Ok(OPCode::IQUERY),
-        2 => Ok(OPCode::STATUS),
-        4 => Ok(OPCode::NOTIFY),
-        5 => Ok(OPCode::UPDATE),
-        6 => Ok(OPCode::DSO),
-        x => Err(()),
-    }
+    let mask = 0b0111_1000;
+    let result = mask & dns_request[2];
+    let opcode_value = result >> 4;
+    let opcode: OPCode = OPCode::from_u32(opcode_value as u32);
+    return Ok(opcode);
 }
 
 fn parse_header_aa(dns_request: &[u8]) -> Result<bool, ()> {
@@ -157,13 +220,8 @@ fn parse_header_ra(dns_request: &[u8]) -> Result<bool, ()> {
 
 fn parse_header_rc(dns_request: &[u8]) -> Result<ReturnCode, ()> {
     let rc = dns_request[3] & 0x0F;
-    match rc {
-        0 => Ok(ReturnCode::NoError),
-        1 => Ok(ReturnCode::FormatError),
-        2 => Ok(ReturnCode::ServFail),
-        3 => Ok(ReturnCode::NxDomain),
-        x => Err(()),
-    }
+
+    return Ok(ReturnCode::from_u8(rc));
 }
 
 fn get_bit_at(input: u8, n: u8) -> Result<bool, ()> {
@@ -174,20 +232,47 @@ fn get_bit_at(input: u8, n: u8) -> Result<bool, ()> {
     }
 }
 
+#[allow(dead_code)]
+fn print_packet(dns_request: &[u8]) {
+    for (i, v) in dns_request.iter().enumerate() {
+        if i % 2 == 1 {
+            println!("|{:08b}|", i);
+        } else {
+            print!("{:2?} |{:08b}", i, v);
+        }
+    }
+    println!("\nDNS length: {:?}", dns_request.len());
+}
+
 #[cfg(test)]
 mod tests {
     use crate::rdns::{
         parse_header_opcode, parse_header_qr, parse_header_ra, parse_header_rd, parse_header_tc,
-        OPCode, QR,
+        parse_qname_parts, OPCode, QR,
     };
 
-    use super::{parse_header_aa, parse_header_id};
+    use super::{parse_header_aa, parse_header_id, print_packet};
     // www.test.com
     const DNS_REQUEST: [u8; 53] = [
         137, 40, 1, 32, 0, 1, 0, 0, 0, 0, 0, 1, 3, 119, 119, 119, 4, 116, 101, 115, 116, 3, 99,
         111, 109, 0, 0, 1, 0, 1, 0, 0, 41, 16, 0, 0, 0, 0, 0, 0, 12, 0, 10, 0, 8, 163, 23, 29, 76,
         18, 6, 57, 90,
     ];
+
+    #[test]
+    fn parse_part_test() {
+        let result = parse_qname_parts(12, &DNS_REQUEST, &mut vec![]);
+
+        println!("Parts: {:?}", result);
+        assert_eq!("www".to_string(), result[0]);
+        assert_eq!("test".to_string(), result[1]);
+        assert_eq!("com".to_string(), result[2]);
+    }
+
+    #[test]
+    fn print_packet_test() {
+        print_packet(&DNS_REQUEST);
+    }
 
     #[test]
     fn parse_id() {
@@ -236,12 +321,22 @@ mod tests {
 
     #[test]
     fn tst() {
-        let v: i8 = 122;
+        // let v: i8 = 122;
         // let x = (v & (0b1111 << 4) >> 4) as u8;
-        let x = v >> 4;
-        let y = v & 0x0F;
-        println!("kuk {:08b}", v);
-        println!("kuk2 {:08b} {:?}", x, x);
-        println!("kuk3 {:08b} {:?}", y, y);
+
+        // #let value = 0b00001010 as u8;
+        // let value = 0b00001010 as u8;
+        // let value = 0b00001010 as u8;
+        let value = 0b00000001 as u8;
+        let mask = 0b01111000 as u8;
+        let target = value & mask;
+        // let a = (v & 0b1111 << 4) as u8;
+        println!("V: {:08b}", value);
+        println!("M: {:08b}", mask);
+        println!("T: {:08b}", target);
+
+        let x = target >> 3;
+
+        println!("X: {:08b} = {:?}", x, x);
     }
 }

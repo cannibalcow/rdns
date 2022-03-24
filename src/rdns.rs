@@ -78,19 +78,99 @@ pub struct DNSHeader {
 impl DNSHeader {
     pub fn decode(dns_request: &[u8]) -> Result<DNSHeader, ()> {
         return Ok(DNSHeader {
-            id: parse_header_id(dns_request),
-            qr: parse_header_qr(dns_request).unwrap(),
-            opcode: parse_header_opcode(dns_request).unwrap(),
-            aa: parse_header_aa(dns_request).unwrap(),
-            truncated: parse_header_tc(dns_request).unwrap(),
-            recursion_desired: parse_header_rd(dns_request).unwrap(),
-            recursion_available: parse_header_ra(dns_request).unwrap(),
-            return_code: parse_header_rc(dns_request).unwrap(),
-            qdcount: parse_header_qdcount(dns_request),
-            ancount: parse_header_ancount(dns_request),
-            nscount: parse_header_nscount(dns_request),
-            arcount: parse_header_arcount(dns_request),
+            id: DNSHeader::parse_header_id(dns_request),
+            qr: DNSHeader::parse_header_qr(dns_request)?,
+            opcode: DNSHeader::parse_header_opcode(dns_request)?,
+            aa: DNSHeader::parse_header_aa(dns_request)?,
+            truncated: DNSHeader::parse_header_tc(dns_request)?,
+            recursion_desired: DNSHeader::parse_header_rd(dns_request)?,
+            recursion_available: DNSHeader::parse_header_ra(dns_request)?,
+            return_code: DNSHeader::parse_header_rc(dns_request)?,
+            qdcount: DNSHeader::parse_header_qdcount(dns_request),
+            ancount: DNSHeader::parse_header_ancount(dns_request),
+            nscount: DNSHeader::parse_header_nscount(dns_request),
+            arcount: DNSHeader::parse_header_arcount(dns_request),
         });
+    }
+
+    fn parse_header_arcount(dns_request: &[u8]) -> u16 {
+        let count: u16 = ((dns_request[10] as u16) << 8) | dns_request[11] as u16;
+        return count;
+    }
+
+    fn parse_header_nscount(dns_request: &[u8]) -> u16 {
+        let count = ((dns_request[8] as u16) << 8) | dns_request[9] as u16;
+        return count;
+    }
+
+    fn parse_header_ancount(dns_request: &[u8]) -> u16 {
+        let count = ((dns_request[6] as u16) << 8) | dns_request[7] as u16;
+        return count;
+    }
+
+    fn parse_header_qdcount(dns_request: &[u8]) -> u16 {
+        let qdcount = ((dns_request[4] as u16) << 8) | dns_request[5] as u16;
+        return qdcount;
+    }
+
+    fn parse_header_id(dns_request: &[u8]) -> u16 {
+        let id = ((dns_request[0] as u16) << 8) | dns_request[1] as u16;
+        return id;
+    }
+
+    fn parse_header_qr(dns_request: &[u8]) -> Result<QR, ()> {
+        let bit = DNSHeader::get_bit_at(dns_request[3], 0);
+        if bit.is_err() {
+            return Err(());
+        }
+
+        if bit.unwrap() == true {
+            return Ok(QR::RESPONSE);
+        } else {
+            return Ok(QR::QUERY);
+        }
+    }
+
+    fn parse_header_opcode(dns_request: &[u8]) -> Result<OPCode, ()> {
+        let mask = 0b0111_1000;
+        let result = mask & dns_request[2];
+        let opcode_value = result >> 4;
+        let opcode: OPCode = OPCode::from_u32(opcode_value as u32);
+        return Ok(opcode);
+    }
+
+    fn parse_header_aa(dns_request: &[u8]) -> Result<bool, ()> {
+        let aa = DNSHeader::get_bit_at(dns_request[3], 5);
+        return aa;
+    }
+
+    fn parse_header_tc(dns_request: &[u8]) -> Result<bool, ()> {
+        let tc = DNSHeader::get_bit_at(dns_request[3], 6);
+        return tc;
+    }
+
+    fn parse_header_rd(dns_request: &[u8]) -> Result<bool, ()> {
+        let rd = DNSHeader::get_bit_at(dns_request[3], 7);
+        return rd;
+    }
+
+    fn parse_header_ra(dns_request: &[u8]) -> Result<bool, ()> {
+        let ra = DNSHeader::get_bit_at(dns_request[3], 0);
+        return ra;
+    }
+
+    fn parse_header_rc(dns_request: &[u8]) -> Result<ReturnCode, ()> {
+        let rc = dns_request[3] & 0x0F;
+
+        return Ok(ReturnCode::from_u8(rc));
+    }
+
+    fn get_bit_at(input: u8, n: u8) -> Result<bool, ()> {
+        if n < 8 {
+            Ok(input & (1 << n) != 0)
+        } else {
+            Err(())
+        }
     }
 
     pub(crate) fn print(&self) {
@@ -119,7 +199,7 @@ pub struct DNSQuestion {
 impl DNSQuestion {
     pub fn decode(dns_request: &[u8]) -> Result<DNSQuestion, ()> {
         return Ok(DNSQuestion {
-            qname: parse_qname(dns_request).unwrap(),
+            qname: DNSQuestion::parse_qname(dns_request).unwrap(),
         });
     }
 
@@ -127,108 +207,26 @@ impl DNSQuestion {
         println!("DNS QUESTION");
         println!("QNAME: {:?}", self.qname)
     }
-}
 
-fn parse_qname(dns_request: &[u8]) -> Result<Vec<String>, ()> {
-    let result = parse_qname_parts(12, dns_request, &mut vec![]);
-    return Ok(result);
-}
-
-fn parse_qname_parts(pos: usize, dns_request: &[u8], parts: &mut Vec<String>) -> Vec<String> {
-    let read_forward: usize = dns_request[pos] as usize;
-
-    if read_forward == 0 {
-        return parts.to_vec();
+    fn parse_qname(dns_request: &[u8]) -> Result<Vec<String>, ()> {
+        let result = DNSQuestion::parse_qname_parts(12, dns_request, &mut vec![]);
+        return Ok(result);
     }
 
-    let part = &dns_request[pos + 1..=pos + read_forward];
-    // println!("Part: {:?}", result_spart.unwrap());
-    parts.push(String::from_utf8(part.to_vec()).unwrap());
+    fn parse_qname_parts(pos: usize, dns_request: &[u8], parts: &mut Vec<String>) -> Vec<String> {
+        let read_forward: usize = dns_request[pos] as usize;
 
-    let next_pos = pos + read_forward + 1;
+        if read_forward == 0 {
+            return parts.to_vec();
+        }
 
-    return parse_qname_parts(next_pos, dns_request, parts);
-}
+        let part = &dns_request[pos + 1..=pos + read_forward];
+        // println!("Part: {:?}", result_spart.unwrap());
+        parts.push(String::from_utf8(part.to_vec()).unwrap());
 
-fn parse_header_arcount(dns_request: &[u8]) -> u16 {
-    let count = ((dns_request[10] as u16) << 8) | dns_request[11] as u16;
-    return count;
-}
+        let next_pos = pos + read_forward + 1;
 
-fn parse_header_nscount(dns_request: &[u8]) -> u16 {
-    let count = ((dns_request[8] as u16) << 8) | dns_request[9] as u16;
-    return count;
-}
-
-fn parse_header_ancount(dns_request: &[u8]) -> u16 {
-    let count = ((dns_request[6] as u16) << 8) | dns_request[7] as u16;
-    return count;
-}
-
-fn parse_header_qdcount(dns_request: &[u8]) -> u16 {
-    let qdcount = ((dns_request[4] as u16) << 8) | dns_request[5] as u16;
-    return qdcount;
-}
-
-fn parse_header_id(dns_request: &[u8]) -> u16 {
-    let id = ((dns_request[0] as u16) << 8) | dns_request[1] as u16;
-    println!("Paseid: {:?}", id);
-    return id;
-}
-
-fn parse_header_qr(dns_request: &[u8]) -> Result<QR, ()> {
-    let bit = get_bit_at(dns_request[3], 0);
-    println!("Binary haed: {:b}", &dns_request[3]);
-    if bit.is_err() {
-        return Err(());
-    }
-
-    if bit.unwrap() == true {
-        return Ok(QR::RESPONSE);
-    } else {
-        return Ok(QR::QUERY);
-    }
-}
-
-fn parse_header_opcode(dns_request: &[u8]) -> Result<OPCode, ()> {
-    let mask = 0b0111_1000;
-    let result = mask & dns_request[2];
-    let opcode_value = result >> 4;
-    let opcode: OPCode = OPCode::from_u32(opcode_value as u32);
-    return Ok(opcode);
-}
-
-fn parse_header_aa(dns_request: &[u8]) -> Result<bool, ()> {
-    let aa = get_bit_at(dns_request[3], 5);
-    return aa;
-}
-
-fn parse_header_tc(dns_request: &[u8]) -> Result<bool, ()> {
-    let tc = get_bit_at(dns_request[3], 6);
-    return tc;
-}
-
-fn parse_header_rd(dns_request: &[u8]) -> Result<bool, ()> {
-    let rd = get_bit_at(dns_request[3], 7);
-    return rd;
-}
-
-fn parse_header_ra(dns_request: &[u8]) -> Result<bool, ()> {
-    let ra = get_bit_at(dns_request[3], 0);
-    return ra;
-}
-
-fn parse_header_rc(dns_request: &[u8]) -> Result<ReturnCode, ()> {
-    let rc = dns_request[3] & 0x0F;
-
-    return Ok(ReturnCode::from_u8(rc));
-}
-
-fn get_bit_at(input: u8, n: u8) -> Result<bool, ()> {
-    if n < 8 {
-        Ok(input & (1 << n) != 0)
-    } else {
-        Err(())
+        return DNSQuestion::parse_qname_parts(next_pos, dns_request, parts);
     }
 }
 
@@ -246,12 +244,10 @@ fn print_packet(dns_request: &[u8]) {
 
 #[cfg(test)]
 mod tests {
-    use crate::rdns::{
-        parse_header_opcode, parse_header_qr, parse_header_ra, parse_header_rd, parse_header_tc,
-        parse_qname_parts, OPCode, QR,
-    };
+    use crate::rdns::{DNSHeader, DNSQuestion, OPCode, QR};
 
-    use super::{parse_header_aa, parse_header_id, print_packet};
+    use super::print_packet;
+
     // www.test.com
     const DNS_REQUEST: [u8; 53] = [
         137, 40, 1, 32, 0, 1, 0, 0, 0, 0, 0, 1, 3, 119, 119, 119, 4, 116, 101, 115, 116, 3, 99,
@@ -261,7 +257,7 @@ mod tests {
 
     #[test]
     fn parse_part_test() {
-        let result = parse_qname_parts(12, &DNS_REQUEST, &mut vec![]);
+        let result = DNSQuestion::parse_qname_parts(12, &DNS_REQUEST, &mut vec![]);
 
         println!("Parts: {:?}", result);
         assert_eq!("www".to_string(), result[0]);
@@ -276,46 +272,46 @@ mod tests {
 
     #[test]
     fn parse_id() {
-        let id = parse_header_id(&DNS_REQUEST);
+        let id = DNSHeader::parse_header_id(&DNS_REQUEST);
         assert_eq!(id, 35112);
     }
 
     #[test]
     fn parse_qr() {
-        let qr = parse_header_qr(&DNS_REQUEST);
+        let qr = DNSHeader::parse_header_qr(&DNS_REQUEST);
 
         assert_eq!(qr.unwrap(), QR::QUERY);
     }
 
     #[test]
     fn parse_opcode() {
-        let opcode = parse_header_opcode(&DNS_REQUEST);
+        let opcode = DNSHeader::parse_header_opcode(&DNS_REQUEST);
 
         assert_eq!(opcode.unwrap(), OPCode::QUERY);
     }
 
     #[test]
     fn pase_aa() {
-        let aa = parse_header_aa(&DNS_REQUEST);
+        let aa = DNSHeader::parse_header_aa(&DNS_REQUEST);
 
         assert_eq!(aa.unwrap(), true);
     }
 
     #[test]
     fn parse_tc() {
-        let tc = parse_header_tc(&DNS_REQUEST);
+        let tc = DNSHeader::parse_header_tc(&DNS_REQUEST);
         assert_eq!(tc.unwrap(), false);
     }
 
     #[test]
     fn parse_rd() {
-        let rd = parse_header_rd(&DNS_REQUEST);
+        let rd = DNSHeader::parse_header_rd(&DNS_REQUEST);
         assert_eq!(rd.unwrap(), false);
     }
 
     #[test]
     fn parse_ra() {
-        let ra = parse_header_ra(&DNS_REQUEST);
+        let ra = DNSHeader::parse_header_ra(&DNS_REQUEST);
         assert_eq!(ra.unwrap(), false);
     }
 

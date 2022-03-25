@@ -1,5 +1,10 @@
 // https://mislove.org/teaching/cs4700/spring11/handouts/project1-primer.pdf
 // https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-5
+
+use std::fmt;
+
+/// TODO: read about how and when to use Result.
+
 #[derive(PartialEq, Debug)]
 enum QR {
     QUERY,
@@ -140,8 +145,7 @@ impl DNSHeader {
     }
 
     fn parse_header_aa(dns_request: &[u8]) -> Result<bool, ()> {
-        let aa = DNSHeader::get_bit_at(dns_request[3], 5);
-        return aa;
+        return DNSHeader::get_bit_at(dns_request[3], 5);
     }
 
     fn parse_header_tc(dns_request: &[u8]) -> Result<bool, ()> {
@@ -161,7 +165,6 @@ impl DNSHeader {
 
     fn parse_header_rc(dns_request: &[u8]) -> Result<ReturnCode, ()> {
         let rc = dns_request[3] & 0x0F;
-
         return Ok(ReturnCode::from_u8(rc));
     }
 
@@ -192,36 +195,92 @@ impl DNSHeader {
 }
 
 #[allow(dead_code)]
+#[derive(Debug, PartialEq)]
+pub enum QueryType {
+    A = 1,      // IP address
+    NS = 2,     // name server
+    CNAME = 5,  // canonical name
+    PTR = 12,   // pointer record
+    HINFO = 13, // host info
+    MX = 15,    // mx
+    AXFR = 252, // request for zone transfer
+    ANY = 255,  // request for all records
+}
+
+impl QueryType {
+    fn from(val: u8) -> QueryType {
+        println!("Query value: {}", val);
+        match val {
+            1 => QueryType::A,
+            2 => QueryType::NS,
+            5 => QueryType::CNAME,
+            12 => QueryType::PTR,
+            13 => QueryType::HINFO,
+            15 => QueryType::MX,
+            252 => QueryType::AXFR,
+            255 => QueryType::ANY,
+            _ => panic!("Unknown query type"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DnsError {
+    message: String,
+}
+
+impl fmt::Display for DnsError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}", self.message)
+    }
+}
+
 pub struct DNSQuestion {
     qname: Vec<String>,
+    qtype: QueryType,
 }
 
 impl DNSQuestion {
-    pub fn decode(dns_request: &[u8]) -> Result<DNSQuestion, ()> {
+    pub fn decode(dns_request: &[u8]) -> Result<DNSQuestion, DnsError> {
+        let host_parts = DNSQuestion::parse_qname(dns_request);
+
+        // fix
+        let parts = host_parts.unwrap();
+
         return Ok(DNSQuestion {
-            qname: DNSQuestion::parse_qname(dns_request).unwrap(),
+            qname: parts.0,
+            qtype: DNSQuestion::parse_qtype(dns_request, &parts.1).unwrap(),
         });
+    }
+
+    pub fn parse_qtype(dns_request: &[u8], read_from: &usize) -> Result<QueryType, ()> {
+        let value = dns_request[read_from + 1];
+        return Ok(QueryType::from(value));
     }
 
     pub fn print(&self) {
         println!("DNS QUESTION");
-        println!("QNAME: {:?}", self.qname)
+        println!("QNAME: {:?}", self.qname);
+        println!("QType: {:?}", self.qtype);
     }
 
-    fn parse_qname(dns_request: &[u8]) -> Result<Vec<String>, ()> {
+    fn parse_qname(dns_request: &[u8]) -> Result<(Vec<String>, usize), DnsError> {
         let result = DNSQuestion::parse_qname_parts(12, dns_request, &mut vec![]);
         return Ok(result);
     }
 
-    fn parse_qname_parts(pos: usize, dns_request: &[u8], parts: &mut Vec<String>) -> Vec<String> {
+    fn parse_qname_parts(
+        pos: usize,
+        dns_request: &[u8],
+        parts: &mut Vec<String>,
+    ) -> (Vec<String>, usize) {
         let read_forward: usize = dns_request[pos] as usize;
 
         if read_forward == 0 {
-            return parts.to_vec();
+            return (parts.to_vec(), pos + read_forward + 1);
         }
 
         let part = &dns_request[pos + 1..=pos + read_forward];
-        // println!("Part: {:?}", result_spart.unwrap());
         parts.push(String::from_utf8(part.to_vec()).unwrap());
 
         let next_pos = pos + read_forward + 1;
@@ -236,7 +295,7 @@ fn print_packet(dns_request: &[u8]) {
         if i % 2 == 1 {
             println!("|{:08b}|", i);
         } else {
-            print!("{:2?} |{:08b}", i, v);
+            print!("{:2?} [{:3?}] |{:08b} ", i, v, v);
         }
     }
     println!("\nDNS length: {:?}", dns_request.len());
@@ -246,7 +305,7 @@ fn print_packet(dns_request: &[u8]) {
 mod tests {
     use crate::rdns::{DNSHeader, DNSQuestion, OPCode, QR};
 
-    use super::print_packet;
+    use super::{print_packet, QueryType};
 
     // www.test.com
     const DNS_REQUEST: [u8; 53] = [
@@ -255,14 +314,24 @@ mod tests {
         18, 6, 57, 90,
     ];
 
+    const QTYPE_POS: usize = 26;
+
     #[test]
     fn parse_part_test() {
         let result = DNSQuestion::parse_qname_parts(12, &DNS_REQUEST, &mut vec![]);
 
-        println!("Parts: {:?}", result);
-        assert_eq!("www".to_string(), result[0]);
-        assert_eq!("test".to_string(), result[1]);
-        assert_eq!("com".to_string(), result[2]);
+        let parts = result.0;
+        let pos = result.1;
+        assert_eq!("www".to_string(), parts[0]);
+        assert_eq!("test".to_string(), parts[1]);
+        assert_eq!("com".to_string(), parts[2]);
+        assert_eq!(QTYPE_POS, pos);
+    }
+
+    #[test]
+    fn parse_qtype_test() {
+        let qtype = DNSQuestion::parse_qtype(&DNS_REQUEST, &QTYPE_POS);
+        assert_eq!(qtype.unwrap(), QueryType::A);
     }
 
     #[test]

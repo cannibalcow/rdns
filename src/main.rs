@@ -4,10 +4,11 @@ use rdns::{DNSHeader, DNSQuestion};
 mod rdns;
 
 // https://mislove.org/teaching/cs4700/spring11/handouts/project1-primer.pdf
+// https://www.rfc-editor.org/rfc/rfc6895.html
 
 fn main() -> std::io::Result<()> {
     {
-        let socket = UdpSocket::bind("127.0.0.1:53")?;
+        let socket = UdpSocket::bind("127.0.0.1:5353")?;
 
         let running = true;
 

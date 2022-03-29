@@ -1,7 +1,8 @@
+use rdns::{
+    self,
+    rdns::{header::DNSHeader, question::DNSQuestion},
+};
 use std::net::UdpSocket;
-
-use rdns::{DNSHeader, DNSQuestion};
-mod rdns;
 
 // https://mislove.org/teaching/cs4700/spring11/handouts/project1-primer.pdf
 // https://www.rfc-editor.org/rfc/rfc6895.html

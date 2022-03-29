@@ -2,7 +2,7 @@
 mod tests {
     use rdns::rdns::{
         header::{DNSHeader, OPCode, QR},
-        question::{DNSQuestion, QueryType},
+        question::{DNSQuestion, QClass, QueryType},
     };
 
     // www.test.com
@@ -24,6 +24,12 @@ mod tests {
         assert_eq!("test".to_string(), parts[1]);
         assert_eq!("com".to_string(), parts[2]);
         assert_eq!(QTYPE_POS, pos);
+    }
+
+    #[test]
+    fn parse_qclass() {
+        let class = DNSQuestion::parse_qclass(&DNS_REQUEST, &QTYPE_POS);
+        assert_eq!(class.unwrap(), QClass::IN)
     }
 
     #[test]

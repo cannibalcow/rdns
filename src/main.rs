@@ -1,3 +1,4 @@
+use pretty_hex::*;
 use rdns::{
     self,
     rdns::{header::DNSHeader, question::DNSQuestion},
@@ -13,6 +14,13 @@ fn main() -> std::io::Result<()> {
 
         let running = true;
 
+        let cfg = HexConfig {
+            title: false,
+            width: 8,
+            group: 0,
+            ..HexConfig::default()
+        };
+
         while running {
             let mut buf: [u8; 512] = [0; 512];
 
@@ -20,6 +28,8 @@ fn main() -> std::io::Result<()> {
 
             let resp = &mut buf[..amt];
 
+            println!("{:?}", resp.hex_conf(cfg));
+            DNSHeader::print_packet(resp);
             let header_result = DNSHeader::decode(resp);
             let question_result = DNSQuestion::decode(resp);
 

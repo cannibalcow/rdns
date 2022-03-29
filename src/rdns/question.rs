@@ -2,6 +2,29 @@ use super::error::DnsError;
 pub struct DNSQuestion {
     qname: Vec<String>,
     qtype: QueryType,
+    qclass: QClass,
+}
+
+#[derive(PartialEq, Debug)]
+pub enum QClass {
+    IN = 1,    // Internet address
+    CS = 2,    // CSNET (obsolete)
+    CH = 3,    // CHAOS Class
+    HS = 4,    // Hesioid [Dyer 87]
+    ANY = 255, // ANY
+}
+
+impl QClass {
+    fn from(value: u8) -> QClass {
+        match value {
+            1 => QClass::IN,
+            2 => QClass::CS,
+            3 => QClass::CH,
+            4 => QClass::HS,
+            255 => QClass::ANY,
+            _ => panic!("Invalid qclass value: {:?}", value),
+        }
+    }
 }
 
 impl DNSQuestion {
@@ -14,18 +37,28 @@ impl DNSQuestion {
         return Ok(DNSQuestion {
             qname: parts.0,
             qtype: DNSQuestion::parse_qtype(dns_request, &parts.1).unwrap(),
+            qclass: DNSQuestion::parse_qclass(dns_request, &parts.1).unwrap(),
         });
     }
 
     pub fn parse_qtype(dns_request: &[u8], read_from: &usize) -> Result<QueryType, ()> {
         let value = dns_request[read_from + 1];
+        println!("Qtype from: {} v: {}", read_from, read_from + 1);
+        println!("Qtype {:?}", QueryType::from(value));
         return Ok(QueryType::from(value));
+    }
+
+    pub fn parse_qclass(dns_request: &[u8], read_from: &usize) -> Result<QClass, ()> {
+        let value = dns_request[read_from + 3];
+        println!("qclass: {:?}", value);
+        return Ok(QClass::from(value));
     }
 
     pub fn print(&self) {
         println!("DNS QUESTION");
         println!("QNAME: {:?}", self.qname);
         println!("QType: {:?}", self.qtype);
+        println!("QClass: {:?}", self.qclass);
     }
 
     pub fn parse_qname(dns_request: &[u8]) -> Result<(Vec<String>, usize), DnsError> {

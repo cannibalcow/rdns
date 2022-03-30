@@ -1,7 +1,12 @@
 use pretty_hex::*;
 use rdns::{
     self,
-    rdns::{header::DNSHeader, question::DNSQuestion},
+    rdns::{
+        answer::{self, Answer, AnswerType},
+        header::DNSHeader,
+        question::DNSQuestion,
+        types::QClass,
+    },
 };
 use std::net::UdpSocket;
 
@@ -24,7 +29,7 @@ fn main() -> std::io::Result<()> {
         while running {
             let mut buf: [u8; 512] = [0; 512];
 
-            let (amt, _) = socket.recv_from(&mut buf)?;
+            let (amt, src) = socket.recv_from(&mut buf)?;
 
             let resp = &mut buf[..amt];
 
@@ -48,6 +53,12 @@ fn main() -> std::io::Result<()> {
 
             header.print();
             question.print();
+            let rdata: Vec<u8> = vec![127, 0, 0, 1];
+            let answer = Answer::new(question.qname.raw, AnswerType::A, QClass::IN, 60, rdata);
+            let packet = answer.to_udp_package();
+
+            // TODO:Fixa header i answer
+            socket.send_to(&packet, &src).expect("Could not send");
         }
         // println!("Str: {:?}", String::from_utf8_lossy(resp))
         // buf.reverse();

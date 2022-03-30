@@ -1,57 +1,36 @@
-use super::error::DnsError;
+use super::types::QClass;
+use super::{error::DnsError, types::QueryType};
 pub struct DNSQuestion {
-    qname: Vec<String>,
-    qtype: QueryType,
-    qclass: QClass,
+    pub qname: QName,
+    pub qtype: QueryType,
+    pub qclass: QClass,
 }
 
-#[derive(PartialEq, Debug)]
-pub enum QClass {
-    IN = 1,    // Internet address
-    CS = 2,    // CSNET (obsolete)
-    CH = 3,    // CHAOS Class
-    HS = 4,    // Hesioid [Dyer 87]
-    ANY = 255, // ANY
-}
-
-impl QClass {
-    fn from(value: u8) -> QClass {
-        match value {
-            1 => QClass::IN,
-            2 => QClass::CS,
-            3 => QClass::CH,
-            4 => QClass::HS,
-            255 => QClass::ANY,
-            _ => panic!("Invalid qclass value: {:?}", value),
-        }
-    }
+#[derive(PartialEq, Debug, Clone)]
+pub struct QName {
+    pub parts: Vec<String>,
+    pub raw: Vec<u8>,
+    pub last_read: usize,
 }
 
 impl DNSQuestion {
     pub fn decode(dns_request: &[u8]) -> Result<DNSQuestion, DnsError> {
-        let host_parts = DNSQuestion::parse_qname(dns_request);
-
-        // fix
-        let parts = host_parts.unwrap();
-
+        let qname = DNSQuestion::parse_qname(dns_request).unwrap();
         return Ok(DNSQuestion {
-            qname: parts.0,
-            qtype: DNSQuestion::parse_qtype(dns_request, &parts.1).unwrap(),
-            qclass: DNSQuestion::parse_qclass(dns_request, &parts.1).unwrap(),
+            qname: qname.clone(),
+            qtype: DNSQuestion::parse_qtype(dns_request, &qname.last_read).unwrap(),
+            qclass: DNSQuestion::parse_qclass(dns_request, &qname.last_read).unwrap(),
         });
     }
 
     pub fn parse_qtype(dns_request: &[u8], read_from: &usize) -> Result<QueryType, ()> {
         let value = dns_request[read_from + 1];
-        println!("Qtype from: {} v: {}", read_from, read_from + 1);
-        println!("Qtype {:?}", QueryType::from(value));
-        return Ok(QueryType::from(value));
+        return Ok(QueryType::from_u8(value));
     }
 
     pub fn parse_qclass(dns_request: &[u8], read_from: &usize) -> Result<QClass, ()> {
         let value = dns_request[read_from + 3];
-        println!("qclass: {:?}", value);
-        return Ok(QClass::from(value));
+        return Ok(QClass::from_u8(value));
     }
 
     pub fn print(&self) {
@@ -61,9 +40,16 @@ impl DNSQuestion {
         println!("QClass: {:?}", self.qclass);
     }
 
-    pub fn parse_qname(dns_request: &[u8]) -> Result<(Vec<String>, usize), DnsError> {
+    pub fn parse_qname(dns_request: &[u8]) -> Result<QName, DnsError> {
         let result = DNSQuestion::parse_qname_parts(12, dns_request, &mut vec![]);
-        return Ok(result);
+        let last_read = result.1;
+        let qname = QName {
+            parts: result.0,
+            raw: (&dns_request[12..last_read]).to_vec(),
+            last_read: last_read,
+        };
+
+        return Ok(qname);
     }
 
     pub fn parse_qname_parts(
@@ -83,35 +69,5 @@ impl DNSQuestion {
         let next_pos = pos + read_forward + 1;
 
         return DNSQuestion::parse_qname_parts(next_pos, dns_request, parts);
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Debug, PartialEq)]
-pub enum QueryType {
-    A = 1,      // IP address
-    NS = 2,     // name server
-    CNAME = 5,  // canonical name
-    PTR = 12,   // pointer record
-    HINFO = 13, // host info
-    MX = 15,    // mx
-    AXFR = 252, // request for zone transfer
-    ANY = 255,  // request for all records
-}
-
-impl QueryType {
-    fn from(val: u8) -> QueryType {
-        println!("Query value: {}", val);
-        match val {
-            1 => QueryType::A,
-            2 => QueryType::NS,
-            5 => QueryType::CNAME,
-            12 => QueryType::PTR,
-            13 => QueryType::HINFO,
-            15 => QueryType::MX,
-            252 => QueryType::AXFR,
-            255 => QueryType::ANY,
-            _ => panic!("Unknown query type"),
-        }
     }
 }

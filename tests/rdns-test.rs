@@ -1,8 +1,10 @@
 #[cfg(test)]
 mod tests {
     use rdns::rdns::{
+        answer::{Answer, AnswerType},
         header::{DNSHeader, OPCode, QR},
-        question::{DNSQuestion, QClass, QueryType},
+        question::DNSQuestion,
+        types::{QClass, QueryType},
     };
 
     // www.test.com
@@ -38,7 +40,7 @@ mod tests {
         assert_eq!(qtype.unwrap(), QueryType::A);
     }
 
-    #[test]
+    #[allow(dead_code)]
     fn print_packet_test() {
         DNSHeader::print_packet(&DNS_REQUEST);
     }
@@ -89,23 +91,13 @@ mod tests {
     }
 
     #[test]
-    fn tst() {
-        // let v: i8 = 122;
-        // let x = (v & (0b1111 << 4) >> 4) as u8;
+    fn answer_test() {
+        let qname = DNSQuestion::parse_qname(&DNS_REQUEST).unwrap();
+        let rdata: Vec<u8> = vec![127, 0, 0, 1];
+        let anwser = Answer::new(qname.raw, AnswerType::A, QClass::IN, 5, rdata);
+        println!("answer: {:?}", anwser);
+        let package = anwser.to_udp_package();
 
-        // #let value = 0b00001010 as u8;
-        // let value = 0b00001010 as u8;
-        // let value = 0b00001010 as u8;
-        let value = 0b00000001 as u8;
-        let mask = 0b01111000 as u8;
-        let target = value & mask;
-        // let a = (v & 0b1111 << 4) as u8;
-        println!("V: {:08b}", value);
-        println!("M: {:08b}", mask);
-        println!("T: {:08b}", target);
-
-        let x = target >> 3;
-
-        println!("X: {:08b} = {:?}", x, x);
+        println!("packet: {:?}", package);
     }
 }

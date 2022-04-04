@@ -57,6 +57,7 @@ impl Answer {
         let class = (s.class.clone()) as u8;
         let ttl = s.ttl.clone();
         let mut rddata = s.rddata.clone();
+
         packet.append(&mut name);
         packet.append(&mut vec![typ]);
         packet.append(&mut vec![class]);

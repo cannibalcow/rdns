@@ -2,7 +2,7 @@ use pretty_hex::*;
 use rdns::{
     self,
     rdns::{
-        answer::{self, Answer, AnswerType},
+        answer::{Answer, AnswerType},
         header::DNSHeader,
         question::DNSQuestion,
         types::QClass,
@@ -55,14 +55,25 @@ fn main() -> std::io::Result<()> {
             question.print();
             let rdata: Vec<u8> = vec![127, 0, 0, 1];
             let answer = Answer::new(question.qname.raw, AnswerType::A, QClass::IN, 60, rdata);
-            let packet = answer.to_udp_package();
+            let answer_udp_packet = answer.to_udp_package();
 
-            // TODO:Fixa header i answer
-            socket.send_to(&packet, &src).expect("Could not send");
+            let answer_packet = create_answer_packet(resp, answer_udp_packet);
+
+            println!("Answer");
+            println!("{:?}", answer_packet.hex_conf(cfg));
+            socket
+                .send_to(&answer_packet, &src)
+                .expect("Could not send");
         }
-        // println!("Str: {:?}", String::from_utf8_lossy(resp))
-        // buf.reverse();
-        // socket.send_to(buf, &src)?;
         Ok(())
     }
+}
+
+fn create_answer_packet(resp: &mut [u8], answer_udp_packet: Vec<u8>) -> Vec<u8> {
+    let header = &resp.to_vec().clone();
+
+    let mut packet: Vec<u8> = vec![];
+    packet.append(&mut header.clone());
+    packet.append(&mut answer_udp_packet.clone());
+    return packet.clone();
 }

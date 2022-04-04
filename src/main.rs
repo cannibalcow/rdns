@@ -15,7 +15,10 @@ use std::net::UdpSocket;
 
 fn main() -> std::io::Result<()> {
     {
-        let socket = UdpSocket::bind("127.0.0.1:5353")?;
+        let addr = "127.0.0.1:5353".to_string();
+        let socket = UdpSocket::bind(&addr).unwrap();
+
+        println!("Starting dns server on: {:?}", &addr);
 
         let running = true;
 
